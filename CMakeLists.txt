@@ -2,14 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(rospack)
 
 find_package(catkin REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
-find_package(tinyxml QUIET)
-if(NOT tinyxml_FOUND)
-  # Just assume it's located in the system directories
-  # though you could try and detect stuff via the pkgconfig file
-  # it provides
-  set(tinyxml_LIBRARIES tinyxml)
-endif() 
+find_package(Boost REQUIRED COMPONENTS filesystem program_options system tinyxml)
 
 catkin_package(
   INCLUDE_DIRS include
@@ -33,7 +26,7 @@ add_library(rospack
   src/rospack_cmdline.cpp
   src/utils.cpp
 )
-target_link_libraries(rospack ${tinyxml_LIBRARIES} ${Boost_LIBRARIES})
+target_link_libraries(rospack ${Boost_LIBRARIES})
 
 add_executable(rospackexe src/rospack_main.cpp)
 # Set the name, and make it a "global" executable
