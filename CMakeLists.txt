@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(rospack)
 
-find_package(catkin REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem program_options system tinyxml)
+find_package(catkin REQUIRED tinyxml)
+find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
 
 catkin_package(
   INCLUDE_DIRS include
