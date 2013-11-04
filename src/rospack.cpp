@@ -68,14 +68,6 @@
 #include <string.h>
 #include <errno.h>
 
-#include <Python.h>
-
-/* re-define some String functions for recent python (>= 3.0) */
-#if PY_VERSION_HEX >= 0x03000000
-#define PyString_AsString PyBytes_AsString
-#define PyString_FromString PyBytes_FromString
-#endif
-
 // TODO:
 //   recrawl on:
 //     package not found in cache
@@ -814,174 +806,13 @@ Rosstackage::cpp_exports(const std::string& name, const std::string& type,
                      const std::string& attrib, bool deps_only,
                      std::vector<std::pair<std::string, bool> >& flags)
 {
-  Stackage* stackage = findWithRecrawl(name);
-  if(!stackage)
-    return false;
-
-  static bool init_py = false;
-  static PyObject* pName;
-  static PyObject* pModule;
-  static PyObject* pDict;
-  static PyObject* pFunc;
-
-  try
-  {
-    computeDeps(stackage);
-    std::vector<Stackage*> deps_vec;
-    if(!deps_only)
-      deps_vec.push_back(stackage);
-    gatherDeps(stackage, false, PREORDER, deps_vec, true);
-    for(std::vector<Stackage*>::const_iterator it = deps_vec.begin();
-        it != deps_vec.end();
-        ++it)
-    {
-      if(!(*it)->is_wet_package_)
-      {
-        std::vector<std::string> dry_flags;
-        if(!exports_dry_package(*it, "cpp", attrib, dry_flags))
-        {
-          return false;
-        }
-        for(std::vector<std::string>::const_iterator it = dry_flags.begin(); it != dry_flags.end(); ++it)
-        {
-          flags.push_back(std::pair<std::string, bool>(*it, false));
-        }
-      }
-      else
-      {
-        initPython();
-        PyGILState_STATE gstate = PyGILState_Ensure();
-
-        if(!init_py)
-        {
-          init_py = true;
-          pName = PyString_FromString("rosdep2.rospack");
-          pModule = PyImport_Import(pName);
-          if(!pModule)
-          {
-            PyErr_Print();
-            PyGILState_Release(gstate);
-            std::string errmsg = "could not find python module 'rosdep2.rospack'. is rosdep up-to-date (at least 0.10.4)?";
-            throw Exception(errmsg);
-          }
-          pDict = PyModule_GetDict(pModule);
-          pFunc = PyDict_GetItemString(pDict, "call_pkg_config");
-        }
-
-        if(!PyCallable_Check(pFunc))
-        {
-          PyErr_Print();
-          PyGILState_Release(gstate);
-          std::string errmsg = "could not find python function 'rosdep2.rospack.call_pkg_config'. is rosdep up-to-date (at least 0.10.7)?";
-          throw Exception(errmsg);
-        }
-
-        PyObject* pArgs = PyTuple_New(2);
-        PyObject* pOpt = PyString_FromString(type.c_str());
-        PyTuple_SetItem(pArgs, 0, pOpt);
-        PyObject* pPkg = PyString_FromString((*it)->name_.c_str());
-        PyTuple_SetItem(pArgs, 1, pPkg);
-        PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
-        Py_DECREF(pArgs);
-
-        if(!pValue)
-        {
-          PyErr_Print();
-          PyGILState_Release(gstate);
-          std::string errmsg = "could not call python function 'rosdep2.rospack.call_pkg_config'";
-          throw Exception(errmsg);
-        }
-        if(pValue == Py_None)
-        {
-          Py_DECREF(pValue);
-          std::string errmsg = "python function 'rosdep2.rospack.call_pkg_config' could not call 'pkg-config " + type + " " + (*it)->name_ + "' without errors";
-          throw Exception(errmsg);
-        }
-
-        flags.push_back(std::pair<std::string, bool>(PyString_AsString(pValue), true));
-        Py_DECREF(pValue);
-
-        // we want to keep the static objects alive for repeated access
-        // so skip all garbage collection until process ends
-        //Py_DECREF(pFunc);
-        //Py_DECREF(pModule);
-        //Py_DECREF(pName);
-        //Py_Finalize();
-
-        PyGILState_Release(gstate);
-      }
-    }
-  }
-  catch(Exception& e)
-  {
-    logError(e.what());
-    return false;
-  }
-  return true;
+  return false;
 }
 
 bool
 Rosstackage::reorder_paths(const std::string& paths, std::string& reordered)
 {
-  static bool init_py = false;
-  static PyObject* pName;
-  static PyObject* pModule;
-  static PyObject* pFunc;
-
-  initPython();
-  PyGILState_STATE gstate = PyGILState_Ensure();
-
-  if(!init_py)
-  {
-    init_py = true;
-    pName = PyString_FromString("catkin_pkg.rospack");
-    pModule = PyImport_Import(pName);
-    if(!pModule)
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "could not find python module 'catkin_pkg.rospack'. is catkin_pkg up-to-date (at least 0.1.8)?";
-      throw Exception(errmsg);
-    }
-    PyObject* pDict = PyModule_GetDict(pModule);
-    pFunc = PyDict_GetItemString(pDict, "reorder_paths");
-  }
-
-  if(!PyCallable_Check(pFunc))
-  {
-    PyErr_Print();
-    PyGILState_Release(gstate);
-    std::string errmsg = "could not find python function 'catkin_pkg.rospack.reorder_paths'. is catkin_pkg up-to-date (at least 0.1.8)?";
-    throw Exception(errmsg);
-  }
-
-
-  PyObject* pArgs = PyTuple_New(1);
-  PyTuple_SetItem(pArgs, 0, PyString_FromString(paths.c_str()));
-  PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
-  Py_DECREF(pArgs);
-
-  if(!pValue)
-  {
-    PyErr_Print();
-    PyGILState_Release(gstate);
-    std::string errmsg = "could not call python function 'catkin_pkg.rospack.reorder_paths'";
-    throw Exception(errmsg);
-  }
-
-  reordered = PyString_AsString(pValue);
-  Py_DECREF(pValue);
-
-  // we want to keep the static objects alive for repeated access
-  // so skip all garbage collection until process ends
-  //Py_DECREF(pFunc);
-  //Py_DECREF(pModule);
-  //Py_DECREF(pName);
-  //Py_Finalize();
-
-  PyGILState_Release(gstate);
-
-  return true;
+  return false;
 }
 
 bool 
@@ -1657,121 +1488,12 @@ Rosstackage::computeDepsInternal(Stackage* stackage, bool ignore_errors, const s
 void
 Rosstackage::initPython()
 {
-  static bool initialized = false;
-  if(!initialized)
-  {
-    initialized = true;
-    Py_InitializeEx(0);
-  }
 }
 
 bool
 Rosstackage::isSysPackage(const std::string& pkgname)
 {
-  static std::map<std::string, bool> cache;
-  if(cache.find(pkgname) != cache.end())
-  {
-    return cache.find(pkgname)->second;
-  }
-
-  initPython();  
-  PyGILState_STATE gstate = PyGILState_Ensure();
-
-  static PyObject* pModule = 0;
-  static PyObject* pDict = 0;
-  if(!pModule)
-  {
-    PyObject* pName = PyString_FromString("rosdep2.rospack");
-    pModule = PyImport_Import(pName);
-    Py_DECREF(pName);
-    if(!pModule)
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "could not find python module 'rosdep2.rospack'. is rosdep up-to-date (at least 0.10.4)?";
-      throw Exception(errmsg);
-    }
-    pDict = PyModule_GetDict(pModule);
-  }
-
-  static PyObject* pView = 0;
-  if(!pView)
-  {
-    PyObject* pFunc = PyDict_GetItemString(pDict, "init_rospack_interface");
-    if(!PyCallable_Check(pFunc))
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "could not find python function 'rosdep2.rospack.init_rospack_interface'. is rosdep up-to-date (at least 0.10.4)?";
-      throw Exception(errmsg);
-    }
-    pView = PyObject_CallObject(pFunc, NULL);
-    if(!pView)
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "could not call python function 'rosdep2.rospack.init_rospack_interface'";
-      throw Exception(errmsg);
-    }
-  }
-  static bool rospack_view_not_empty = false;
-  if(!rospack_view_not_empty)
-  {
-    PyObject* pFunc = PyDict_GetItemString(pDict, "is_view_empty");
-    if(!PyCallable_Check(pFunc))
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "could not find python function 'rosdep2.rospack.is_view_empty'. is rosdep up-to-date (at least 0.10.8)?";
-      throw Exception(errmsg);
-    }
-    PyObject* pArgs = PyTuple_New(1);
-    PyTuple_SetItem(pArgs, 0, pView);
-    PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
-    Py_INCREF(pView); // in order to keep the view when garbaging pArgs
-    Py_DECREF(pArgs);
-    if(PyObject_IsTrue(pValue))
-    {
-      PyErr_Print();
-      PyGILState_Release(gstate);
-      std::string errmsg = "the rosdep view is empty: call 'sudo rosdep init' and 'rosdep update'";
-      throw Exception(errmsg);
-    }
-    rospack_view_not_empty = true;
-  }
-
-  PyObject* pFunc = PyDict_GetItemString(pDict, "is_system_dependency");
-  if(!PyCallable_Check(pFunc))
-  {
-    PyErr_Print();
-    PyGILState_Release(gstate);
-    std::string errmsg = "could not call python function 'rosdep2.rospack.is_system_dependency'. is rosdep up-to-date (at least 0.10.4)?";
-    throw Exception(errmsg);
-  }
-
-  PyObject* pArgs = PyTuple_New(2);
-  PyTuple_SetItem(pArgs, 0, pView);
-  PyObject* pDep = PyString_FromString(pkgname.c_str());
-  PyTuple_SetItem(pArgs, 1, pDep);
-  PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
-  Py_INCREF(pView); // in order to keep the view when garbaging pArgs
-  Py_DECREF(pArgs);
-
-  bool value = PyObject_IsTrue(pValue);
-  Py_DECREF(pValue);
-
-  // we want to keep the static objects alive for repeated access
-  // so skip all garbage collection until process ends
-  //Py_DECREF(pView);
-  //Py_DECREF(pDict);
-  //Py_DECREF(pModule);
-  //Py_Finalize();
-
-  PyGILState_Release(gstate);
-
-  cache[pkgname] = value;
-
-  return value;
+  return false;
 }
 
 void
